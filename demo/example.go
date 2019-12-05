@@ -17,8 +17,8 @@ func main() {
 	ch4 := make(chan bool, 0)
 	id1 := task.AddTaskCallBackFunc(test, 3, "任务111111") // 每间隔3秒执行一次 test 函数
 	id2 := task.AddTaskCallBackChannel(ch2, 5) // 每间隔5秒向ch2回写 bool true
-	id3 := task.AddCycleTaskCallBackFunc(test, "16:30:45", "任务333333") // 每天 16:18:55 执行一次 test，如果在建立该任务时当前时间已经超过该指定时间，则任务推迟至明天同一时间执行
-	id4 := task.AddCycleTaskCallBackChannel(ch4, "16:30:49") // 每天 16:18:55 向ch4回写 bool true，如果在建立该任务时当前时间已经超过该指定时间，则任务推迟至明天同一时间执行
+	id3 := task.AddCycleTaskCallBackFunc(test, "16:18:55", "任务333333") // 每天 16:18:55 执行一次 test，如果在建立该任务时当前时间已经超过该指定时间，则任务推迟至明天同一时间执行
+	id4 := task.AddCycleTaskCallBackChannel(ch4, "16:18:55") // 每天 16:18:55 向ch4回写 bool true，如果在建立该任务时当前时间已经超过该指定时间，则任务推迟至明天同一时间执行
 
 	Println(id1, id2, id3, id4)
 	for {
