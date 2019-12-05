@@ -8,7 +8,7 @@ package main
  */
 
 import ."fmt"
-import "github.com/goticker"
+import "github.com/aWildProgrammer/goticker"
 
 func main() {
 
