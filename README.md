@@ -4,7 +4,9 @@
 由于 go 自带的 time.Ticker 比较弱鸡，仅支持 chan 回写，所以封装在业务里需要大量的工作及协程处理，在性能上消耗很大，所以这里写一个轻量级的分享。
 
 
-```code
+# example.go
+
+```go
 
 
 import ."fmt"
