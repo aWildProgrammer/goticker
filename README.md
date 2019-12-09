@@ -14,7 +14,7 @@ import "github.com/aWildProgrammer/goticker"
 
 func main() {
 
-	task := goticker.New(100)
+	task := goticker.New(100, true)
 	ch2 := make(chan bool, 0)
 	ch4 := make(chan bool, 0)
 	id1 := task.AddTaskCallBackFunc(test, 3, "任务111111") // 每间隔3秒执行一次 test 函数
