@@ -11,10 +11,13 @@ import "time"
 import "sync"
 
 type Tasks struct {
+	exec bool // 是否在打开任务时执行一次
+	exit bool
+	ChanClosed chan bool
 	sync.Mutex
-	MaxTsid int
+	maxTsid int
 	scanning_cycle time.Duration // 每间隔 scanning_cycle 秒扫一次任务
-	TaskList []*Task
+	taskList []*Task
 }
 
 type Task struct {
@@ -28,14 +31,25 @@ type Task struct {
 	handleFunc func(arg interface{})
 }
 
-func New(scanningTime time.Duration) *Tasks {
+func New(scanningTime time.Duration, ex bool) *Tasks {
 	if scanningTime < 50 {
 		scanningTime = 50
 	}
 	ts := &Tasks {
 		scanning_cycle: scanningTime,
+		exec: ex,
+		ChanClosed: make(chan bool, 1),
 	}
 	go ts.ListeningTasks()
+	return ts
+}
+
+func (ts *Tasks) Exit() {
+	ts.exit = true
+}
+
+func (ts *Tasks) Exec(e bool) *Tasks {
+	ts.exec = e
 	return ts
 }
 
@@ -47,14 +61,18 @@ func (ts *Tasks) AddTaskCallBackChannel(ch chan <- bool, expire int64) int {
 	ts.Lock()
 	defer ts.Unlock()
 
-	ts.MaxTsid++
-	ts.TaskList = append(ts.TaskList, &Task {
-		id: ts.MaxTsid,
+	task := &Task {
+		id: ts.maxTsid,
 		taskType: 1, // 普通周期性任务，如：每隔 10 秒运行一次的任务
 		expireTime: expire,
 		cbackChan: ch,
-	})
-	return ts.MaxTsid
+	}
+	if !ts.exec {
+		task.lastHnTime = time.Now().Unix()
+	}
+	ts.maxTsid++
+	ts.taskList = append(ts.taskList, task)
+	return ts.maxTsid
 }
 
 /**
@@ -65,15 +83,19 @@ func (ts *Tasks) AddTaskCallBackFunc(k func (arg interface{}), expire int64, par
 	ts.Lock()
 	defer ts.Unlock()
 
-	ts.MaxTsid++
-	ts.TaskList = append(ts.TaskList, &Task {
-		id: ts.MaxTsid,
+	ts.maxTsid++
+	task := &Task {
+		id: ts.maxTsid,
 		taskType: 1, // 1-指定为 ticker 周期性任务, 如：每隔 10 秒运行一次的任务
 		expireTime: expire,
 		handleFunc: k,
 		taskParams: params,
-	})
-	return ts.MaxTsid
+	}
+	if !ts.exec {
+		task.lastHnTime = time.Now().Unix()
+	}
+	ts.taskList = append(ts.taskList, task)
+	return ts.maxTsid
 }
 
 // 新增一个计划任务 以时/分/秒为周期 每天运行一次
@@ -98,16 +120,16 @@ func (ts *Tasks) AddCycleTaskCallBackFunc(k func (arg interface{}), Time string,
 	if !sr.After(nt) {
 		sr = sr.AddDate(0, 0, 1) // 推迟一天执行
 	}
-	ts.MaxTsid++
+	ts.maxTsid++
 
-	ts.TaskList = append(ts.TaskList, &Task {
-		id: ts.MaxTsid,
+	ts.taskList = append(ts.taskList, &Task {
+		id: ts.maxTsid,
 		taskType: 2, // 2-指定为 timer 定时周期性任务, 如：每天5:00:00运行一次的任务
 		timerTime: sr,
 		handleFunc: k,
 		taskParams: params,
 	})
-	return ts.MaxTsid
+	return ts.maxTsid
 }
 
 // 周期性任务，当任务条件达到时，向管道回写 bool true
@@ -120,22 +142,27 @@ func (ts *Tasks) AddCycleTaskCallBackChannel(ch chan <- bool, Time string) int {
 	if !sr.After(nt) {
 		sr = sr.AddDate(0, 0, 1) // 推迟一天执行
 	}
-	ts.MaxTsid++
-	ts.TaskList = append(ts.TaskList, &Task {
-		id: ts.MaxTsid,
+	ts.maxTsid++
+	ts.taskList = append(ts.taskList, &Task {
+		id: ts.maxTsid,
 		taskType: 2, // 2-指定为 timer 定时周期性任务, 如：每天5:00:00运行一次的任务
 		timerTime: sr,
 		cbackChan: ch,
 	})
-	return ts.MaxTsid
+	return ts.maxTsid
 }
 
 // 串行异步非阻塞处理任务
 func (ts *Tasks) ListeningTasks() {
 	for {
+		if ts.exit {
+			ts.ChanClosed <- true
+			println("exit for running task...")
+			return
+		}
 		// 周期性任务
 		now := time.Now().UTC()
-		for _, task := range ts.TaskList {
+		for _, task := range ts.taskList {
 			handle := false
 			if task.taskType == 1 && now.Unix() - task.lastHnTime + 1 > task.expireTime {
 				handle = true
@@ -148,7 +175,13 @@ func (ts *Tasks) ListeningTasks() {
 				if task.handleFunc != nil {
 					go task.handleFunc(task.taskParams)
 				} else {
-					go func(t *Task) { t.cbackChan <- true }(task)
+					go func(t *Task) {
+						select {
+						case t.cbackChan <- true:
+						case <- time.After(time.Second):
+							println("time out...")
+						}
+					}(task)
 				}
 			}
 		}
@@ -160,9 +193,9 @@ func (ts *Tasks) ListeningTasks() {
 func (ts *Tasks) Cancle(tsid int) {
 	ts.Lock()
 	defer ts.Unlock()
-	for i, task := range ts.TaskList {
+	for i, task := range ts.taskList {
 		if task.id == tsid {
-			ts.TaskList = append(ts.TaskList[:i], ts.TaskList[i+1:]...)
+			ts.taskList = append(ts.taskList[:i], ts.taskList[i+1:]...)
 		}
 	}
 }
